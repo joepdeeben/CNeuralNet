@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <unistd.h>
 
 #define LAYER_SIZE 20
+const float learning_rate = 0.1;
+const int epochs = 100;
 
-
-struct neuron{
-    float weight;
+struct neuron {
+    float *input_weights;
+    float output_gradient[20];
     float bias;
     float value;
 };
@@ -16,80 +18,136 @@ struct layer {
 };
 
 
-float derive_neuron(float x, float y){
-    return (x - y) * ;
+
+float sum(float arr[], int size) {
+    float total = 0.0;
+    for (int i = 0; i < size; i++) {
+        total += arr[i];
+    }
+    return total;
 }
 
 
+void change_output(struct layer *curr_layer, float *res, float *neurons, struct layer *prev_layer) {
+    float error, gradient;
+    for (int j = 0; j < LAYER_SIZE; j++) {
+        error = res[j] - neurons[j];
+        for (int i = 0; i < LAYER_SIZE; i++) {
+            gradient = error * prev_layer->neurons[i].value;
+            prev_layer->neurons[i].input_weights[j] -= gradient * learning_rate;
+            prev_layer->neurons[i].output_gradient[j] = gradient;
+        }
+        curr_layer->neurons[j].bias -= error * learning_rate;
+    }
+}
+
+void change_layer(struct layer *curr_layer, struct layer *prev_layer, struct layer *next_layer, float *res, float *neurons) {
+    float gradient;
+    for (int i = 0; i < LAYER_SIZE; i++) {
+        if (curr_layer->neurons[i].value > 0) {
+            float result = sum(curr_layer -> neurons[i].output_gradient, 20);
+            for (int j = 0; j < LAYER_SIZE; j++) {
+                gradient = result * prev_layer->neurons[j].value;
+                prev_layer->neurons[j].input_weights[i] -= gradient * learning_rate;
+
+            }
+        }
+    }
+}
+
 void calculate_neuron(struct layer *layer1, struct neuron *neuron) {
     float sum = 0;
-    for (int i = 0; i < LAYER_SIZE; i++){
-        sum += layer1->neurons[i].value *  layer1->neurons[i].weight;
+    for (int i = 0; i < LAYER_SIZE; i++) {
+        sum += layer1->neurons[i].value * neuron->input_weights[i];
     }
     sum += neuron->bias;
     neuron->value = (sum <= 0) ? 0 : sum;
 }
+
 void calculate_layer(struct layer *prev_layer, struct layer *curr_layer) {
     for (int i = 0; i < LAYER_SIZE; i++) {
         calculate_neuron(prev_layer, &curr_layer->neurons[i]);
     }
 }
 
-void backpropagate(){
-    for (int i = 0; i < LAYER_SIZE; i++){
-        if ()
-
-    }
-
-}
-
 void loss(float *res, float *neurons, float *out) {
     for (int i = 0; i < LAYER_SIZE; i++) {
-        out[i] = 0.5 * (((res[i]) - neurons[i]) * (res[i] - neurons[i]));
+        out[i] = 0.5 * ((res[i] - neurons[i]) * (res[i] - neurons[i]));
     }
 }
 
 int main(void) {
-//    srand(time(NULL));
     printf("Hello, NN!\n");
-    struct layer layer1;
-    struct layer layer2;
-    struct layer output;
+
+    struct layer layer1, layer2, output;
     struct layer list[] = {layer1, layer2, output};
 
-
-    float neurons[20] = {46.34651069414813, 6.798066533839791, 32.99274869936022, 43.20280349639412,
-                         25.539418354559384, 33.37133708130474, 28.24414714697972, 2.416162030532681,
-                         28.016077847152516, 41.329047753775264, 2.489473268168335, 31.419400806005555,
-                         20.339699865233474, 25.074633366380628, 18.342944317599553, 1.9548216217991188,
-                         2.210663474703428, 49.234310637818616, 43.49503700241205, 47.0548790545903};
+    float neurons[20];
+    for (int i = 0; i < LAYER_SIZE; i++) {
+        neurons[i] = (float)(i + 1);
+    }
     float res[20];
     float out[20];
 
-
-    float derivative_output[20];
     for (int i = 0; i < LAYER_SIZE; i++) {
-
-        list[0].neurons[i].weight = (rand() % 100) / 100.0f;
+        list[0].neurons[i].input_weights = (float*) malloc(LAYER_SIZE * sizeof(float));
         list[0].neurons[i].value = (rand() % 10) / 10.0f;
         list[0].neurons[i].bias = (rand() % 100) / 100.0f;
 
-        list[1].neurons[i].weight = (rand() % 100) / 100.0f;
+        for (int j = 0; j < LAYER_SIZE; j++) {
+            list[0].neurons[i].input_weights[j] = (rand() % 100) / 100.0f;
+        }
+
+        list[1].neurons[i].input_weights = (float*) malloc(LAYER_SIZE * sizeof(float));
         list[1].neurons[i].bias = (rand() % 100) / 100.0f;
 
-        list[2].neurons[i].weight = (rand() % 100) / 100.0f;
-        list[2].neurons[i].bias = (rand() % 100) / 100.0f;
-    }
-    for (int i = 0; i < 2; i++) {
-        calculate_layer(&list[i], &list[i + 1]);
         for (int j = 0; j < LAYER_SIZE; j++) {
-            printf("Layer %d, Neuron %d: %f\n", i, j, list[i + 1].neurons[j].value);
-            if (i == 1){
-                res[j] = list[i + 1].neurons[j].value;
+            list[1].neurons[i].input_weights[j] = (rand() % 100) / 100.0f;
+        }
+
+        list[2].neurons[i].input_weights = (float*) malloc(LAYER_SIZE * sizeof(float));
+        list[2].neurons[i].bias = (rand() % 100) / 100.0f;
+
+        for (int j = 0; j < LAYER_SIZE; j++) {
+            list[2].neurons[i].input_weights[j] = (rand() % 100) / 100.0f;
+        }
+    }
+
+
+
+    for (int epoch = 0; epoch < epochs; epoch++) {
+        for (int i = 0; i < 2; i++) {
+            calculate_layer(&list[i], &list[i + 1]);
+            for (int j = 0; j < LAYER_SIZE; j++) {
+                if (i == 1) {
+                    res[j] = list[i + 1].neurons[j].value;
+                }
+            }
+
+            loss(res, neurons, out);
+
+            change_output(&list[2], res, neurons, &list[1]);
+            change_layer(&list[1], &list[0], &list[2], res, neurons);
+
+            float total_loss = 0;
+            for (int i = 0; i < LAYER_SIZE; i++) {
+                total_loss += out[i];
+            }
+
+            printf("Epoch %d, Loss: %f\n", epoch, total_loss);
+
+            printf("Epoch %d\n", epoch);
+            for (int i = 0; i < LAYER_SIZE; i++) {
+                printf("Output: %.4f\tExpected: %.4f\n", list[2].neurons[i].value, neurons[i]);
             }
         }
     }
 
+    for (int i = 0; i < LAYER_SIZE; i++) {
+        free(list[0].neurons[i].input_weights);
+        free(list[1].neurons[i].input_weights);
+        free(list[2].neurons[i].input_weights);
+    }
 
     return 0;
 }
