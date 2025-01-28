@@ -1,7 +1,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <stdbool.h>
 
 
 const float learning_rate = 0.001;
@@ -44,7 +44,6 @@ void change_output(struct layer *curr_layer, float *res, float *expected, struct
         error = res[j] - expected[j];
         for (int i = 0; i < prev_layer -> size; i++) {
             gradient = error * prev_layer->neurons[i].value;
-            // gradient = clip(gradient, -10.0, 10.0);
             prev_layer->neurons[i].input_weights[j] -= gradient * learning_rate;
             prev_layer->neurons[i].output_gradient[j] = gradient;
         }
@@ -52,14 +51,13 @@ void change_output(struct layer *curr_layer, float *res, float *expected, struct
     }
 }
 
-void change_layer(struct layer *curr_layer, struct layer *prev_layer) {
+void change_layer(struct layer *curr_layer, struct layer *prev_layer, struct layer *next_layer) {
     float gradient;
     for (int i = 0; i < curr_layer -> size; i++) {
         if (curr_layer->neurons[i].value > 0) {
-            float result = sum(curr_layer -> neurons[i].output_gradient, curr_layer -> size);
+            float result = sum(curr_layer -> neurons[i].output_gradient, next_layer-> size);
             for (int j = 0; j < prev_layer -> size; j++) {
                 gradient = result * prev_layer->neurons[j].value;
-                // gradient = clip(gradient, -10.0, 10.0);
                 prev_layer->neurons[j].input_weights[i] -= gradient * learning_rate;
                 prev_layer->neurons[j].output_gradient[i] = gradient;
 
@@ -69,21 +67,40 @@ void change_layer(struct layer *curr_layer, struct layer *prev_layer) {
     }
 }
 
-void calculate_neuron(struct layer *curr_layer, struct layer *prev_layer, struct neuron *neuron, int index) {
+void calculate_neuron(struct layer *prev_layer, struct neuron *neuron, int index, bool is_output_layer) {
     float sum = 0;
     for (int i = 0; i < prev_layer -> size; i++) {
         sum += prev_layer->neurons[i].value * prev_layer->neurons[i].input_weights[index];
     }
     sum += neuron->bias;
-    neuron->value = (sum <= 0) ? sum * 0.01 : sum;
-}
-
-void calculate_layer(struct layer *prev_layer, struct layer *curr_layer) {
-    for (int i = 0; i < curr_layer -> size; i++) {
-        calculate_neuron(curr_layer, prev_layer, &curr_layer->neurons[i], i);
+    if (is_output_layer) {
+        neuron->value = sum;
+    } else {
+        neuron->value = (sum <= 0) ? 0.01f * sum: sum;
     }
 }
 
+void calculate_layer(struct layer *prev_layer, struct layer *curr_layer, bool is_output_layer) {
+    for (int i = 0; i < curr_layer -> size; i++) {
+        calculate_neuron(prev_layer, &curr_layer->neurons[i], i, is_output_layer);
+    }
+}
+
+void calculate_network(struct layer *all_layers, int size) {
+    for (int i = 0; i < size - 1; i++) {
+        bool is_output_layer = (i == size - 2);
+        calculate_layer(&all_layers[i], &all_layers[i + 1], is_output_layer);
+    }
+}
+
+void backprop(struct layer *all_layers, int amount_layers, float *res, float *expected) {
+
+    change_output(&all_layers[amount_layers - 1], res, expected,  &all_layers[amount_layers - 2]);
+
+    for (int i = amount_layers - 2; i > 0 ; i--) {
+        change_layer(&all_layers[i], &all_layers[i - 1], &all_layers[i +1]);
+    }
+}
 
 void loss(float *res, float *expected, float *out, int size) {
     for (int i = 0; i < size; i++) {
@@ -99,9 +116,12 @@ struct layer * initialize_layers(int *layers, int size) {
     }
     for (int i = 0; i < size; i++) {
         layers_arr[i].neurons = malloc(sizeof(struct neuron) * layers[i]);
+        layers_arr[i].size = layers[i];
         if (layers_arr[i].neurons == NULL) {
             printf("Error allocating neuron\n");
-            free(layers_arr[i].neurons);
+            for (int i = 0; i < size; i++) {
+                free(layers_arr[i].neurons);
+            }
             return NULL;
         }
         for (int j = 0; j < layers[i]; j++) {
@@ -109,7 +129,14 @@ struct layer * initialize_layers(int *layers, int size) {
             layers_arr[i].neurons[j].input_weights = (float*) malloc(layers[i + 1] * sizeof(float));
             if (layers_arr[i].neurons[j].input_weights == NULL) {
                 printf("Error allocating input weights\n");
-                free(layers_arr[i].neurons[j].input_weights);
+                for (int i = 0; i < size; i++) {
+                    free(layers_arr[i].neurons[j].input_weights);
+                }
+
+            }
+            layers_arr[i].neurons[j].output_gradient = (float *)malloc(layers[i + 1] * sizeof(float));
+            if (layers_arr[i].neurons[j].output_gradient == NULL) {
+                printf("Error allocating output gradients\n");
             }
 
             for (int k = 0; k < layers[i + 1]; k++) {
@@ -128,54 +155,59 @@ struct layer * initialize_layers(int *layers, int size) {
     return layers_arr;
 }
 
+void run_epoch(int epochs, struct layer *layer, int amount_layers, float *expected) {
+        for (int i = 0; i < epochs; i++) {
+            printf("epoch %d\n", i);
+            calculate_network(layer, amount_layers);
+
+            int output_size = layer[amount_layers - 1].size;
+            float *res = malloc(sizeof(float) * output_size);
+            float *out = malloc(sizeof(float) * output_size);
+            if (res == NULL || out == NULL) {
+                printf("Memory allocation failed\n");
+                return;
+            }
+            for (int j = 0; j < output_size; j++) {
+                res[j] = layer[amount_layers - 1].neurons[j].value;
+            }
+            loss(res, expected, out, output_size);
+            for (int k = 0; k < output_size; k++) {
+                printf("actual: %f expected: %f\n", out[k], expected[k]);
+            }
+
+            backprop(layer, amount_layers, res, expected);
+            free(res);
+            free(out);
+        }
+
+}
 
 int main(void) {
     printf("Hello, NN!\n");
 
 
 
-    int layers[] = {10, 20, 10, 5};
+    int layers[] = {20, 20, 20};
     int size = sizeof(layers) / sizeof(int);
 
-    initialize_layers(layers, size);
+    struct layer *layer = initialize_layers(layers, size);
+
+
+    float *expected = malloc(layers[size - 1] * sizeof(float));
+    if (expected == NULL) {
+        printf("Memory allocation failed for expected\n");
+        return -1;
+    }
+
+    for (int i = 0; i < layers[size - 1]; i++) {
+        expected[i] = (float)(i + 1);
+    }
 
 
 
+    run_epoch(epochs, layer, size, expected);
+    printf("after");
 
-    //
-    // for (int epoch = 0; epoch < epochs; epoch++) {
-    //     for (int i = 0; i < 2; i++) {
-    //         calculate_layer(&list[i], &list[i + 1]);
-    //         for (int j = 0; j < LAYER_SIZE; j++) {
-    //             if (i == 1) {
-    //                 res[j] = list[i + 1].neurons[j].value;
-    //             }
-    //         }
-    //
-    //         loss(res, neurons, out);
-    //
-    //         change_output(&list[2], res, neurons, &list[1]);
-    //         change_layer(&list[1], &list[0], &list[2], res, neurons);
-    //
-    //         float total_loss = 0;
-    //         for (int i = 0; i < LAYER_SIZE; i++) {
-    //             total_loss += out[i];
-    //         }
-    //
-    //         printf("Epoch %d, Loss: %f\n", epoch, total_loss);
-    //
-    //         printf("Epoch %d\n", epoch);
-    //         for (int i = 0; i < LAYER_SIZE; i++) {
-    //             printf("Output: %.4f\tExpected: %.4f\n", list[2].neurons[i].value, neurons[i]);
-    //         }
-    //     }
-    // }
-    //
-    // for (int i = 0; i < LAYER_SIZE; i++) {
-    //     free(list[0].neurons[i].input_weights);
-    //     free(list[1].neurons[i].input_weights);
-    //     free(list[2].neurons[i].input_weights);
-    // }
 
     return 0;
 }
