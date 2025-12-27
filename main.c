@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <tgmath.h>
 #include <stdbool.h>
-const float learning_rate = 0.05;
+const float learning_rate = 0.0002;
 const int epochs = 100;
 
 struct neuron {
