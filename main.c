@@ -2,9 +2,9 @@
 #include <stdlib.h>
 #include <tgmath.h>
 #include <stdbool.h>
-const float learning_rate = 0.005;
+const float learning_rate = 0.01;
 const float div_loss_weight = 5.0f;
-const int epochs = 20000;
+const int epochs = 1000;
 
 struct neuron {
     float *input_weights;
@@ -190,13 +190,13 @@ static inline char int_to_op(int code) {
 int main(void) {
     printf("Hello, NN!\n");
 
-    int layers[] = {6, 320, 160, 160, 1};
+    int layers[] = {6, 64,32, 16, 1};
     int layer_n = sizeof(layers) / sizeof(int);
 
     struct layer *list = initialize_layers(layers, layer_n);
     printf("Layers created\n");
 
-        const int N_SAMPLES = 100;
+        const int N_SAMPLES = 100000;
 
     float expected[1];
 
@@ -233,35 +233,27 @@ int main(void) {
         }
 
         float expected[1];
-        expected[0] = y / 100.0f; // scale output for mixed ops
-
-        //------------------------------------------
-        // 1) forward pass
-        //------------------------------------------
+        expected[0] = y / 100.0f; 
+        
         for (int i = 0; i < layer_n - 1; i++) {
             bool is_last = (i == layer_n - 2);
             calculate_layer(&list[i], &list[i + 1], is_last);
         }
 
-        //------------------------------------------
-        // 2) backward pass
-        //------------------------------------------
+        
         float loss_weight = (op == '/') ? div_loss_weight : 1.0f;
         change_output(&list[layer_n - 1], expected, &list[layer_n - 2], loss_weight);
         for (int i = layer_n - 2; i > 0; i--) {
             change_layer(&list[i], &list[i - 1], &list[i + 1]);
         }
 
-        //------------------------------------------
-        // 3) accumulate loss
-        //------------------------------------------
+       
         epoch_loss += loss_weight * loss(&list[layer_n - 1], expected);
     }
 
     epoch_loss /= N_SAMPLES;
     printf("Epoch %d, Avg Loss: %f\n", epoch, epoch_loss);
 
-    // --- one fresh sample for sanity print ---
     int a = (rand() % 21) - 10;
     int b = (rand() % 21) - 10;
     int op_code = rand() % 4;
